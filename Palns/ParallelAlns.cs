@@ -84,22 +84,33 @@ namespace Palns
             }
         }
 
-        public int ProcessorCores => Environment.ProcessorCount / 2;
+        public int ProcessorCores
+        {
+            get
+            {
+                return Environment.ProcessorCount / 2;
+            }
+        }
 
         public TSolution BestSolution { get; private set; }
 
         /// <summary>
-        ///     Gets a text describing the repair and destroy methods' weights.
+        /// Gets a text describing the repair and destroy methods' weights.
         /// </summary>
         public string MethodWeightLog
         {
             get
             {
-                var log = $"Operators' weights\n{"Weight",-10}|Operator\n\n";
-                for (var i = 0; i < _weights.Count; i++)
+                var log = string.Format("Operators' weights\n{0,-10}|Operator\n\n", "Weight");
+                foreach (var combinationIdx in Enumerable.Range(0, _weights.Count).OrderBy(i => _weights[i]))
                 {
-                    log += $"{_weights[i],-10:0.#####}| {_destroyOperators[i / _destroyOperators.Count].Method.Name}, {_destroyOperators[i % _destroyOperators.Count].Method.Name}\n";
+                    log += string.Format(
+                        "{0,-10:0.#####} {1}, {2}\n",
+                        _weights[combinationIdx],
+                        _destroyOperators[combinationIdx / _repairOperators.Count].Method.Name,
+                        _repairOperators[combinationIdx % _repairOperators.Count].Method.Name);
                 }
+
                 return log;
             }
         }
@@ -145,8 +156,8 @@ namespace Palns
                 x =>
                 {
                     x.OperatorIndex = SelectOperatorIndex(_cumulativeWeights);
-                    x.DestroyOperator = _destroyOperators[x.OperatorIndex % _destroyOperators.Count];
-                    x.RepairOperator = _repairOperators[x.OperatorIndex / _destroyOperators.Count];
+                    x.DestroyOperator = _destroyOperators[x.OperatorIndex / _repairOperators.Count];
+                    x.RepairOperator = _repairOperators[x.OperatorIndex % _repairOperators.Count];
                     return x;
                 }, weightOptions);
             var copyCurrentSolution = new TransformBlock<Message<TSolution>, Message<TSolution>>(
@@ -171,8 +182,6 @@ namespace Palns
                 new TransformBlock<Message<TSolution>, Message<TSolution>>(x =>
                 {
                     x.WeightSelection = UpdateBestSolution(x.Solution, x.WeightSelection);
-                    Console.WriteLine("{0}. Objective: {1}", iterationCounter, x.Solution.Objective);
-
                     return x;
                 }, executionDataflowBlockOptions);
             var updateWeights =
@@ -226,8 +235,8 @@ namespace Palns
                 lock (_weightLock)
                 {
                     operatorIndex = SelectOperatorIndex(_cumulativeWeights);
-                    d = _destroyOperators[operatorIndex / _destroyOperators.Count];
-                    r = _repairOperators[operatorIndex % _destroyOperators.Count];
+                    d = _destroyOperators[operatorIndex / _repairOperators.Count];
+                    r = _repairOperators[operatorIndex % _repairOperators.Count];
                 }
                 TSolution xTemp;
                 //if there is just one thread, there is no need for copying
@@ -257,7 +266,11 @@ namespace Palns
                     UpdateWeights(operatorIndex, weightSelection);
                 }
                 temperature *= _alpha;
-                _progressUpdate?.Invoke(BestSolution);
+
+                if (_progressUpdate != null)
+                {
+                    _progressUpdate.Invoke(BestSolution);
+                }
             } while (!_abort.Invoke());
         }
 
