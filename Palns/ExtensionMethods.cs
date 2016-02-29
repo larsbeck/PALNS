@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace Palns
 {
-    public static class ExtensionMethods
+    internal static class ExtensionMethods
     {
         public static IEnumerable<double> ToCumulativEnumerable(this IEnumerable<double> input)
         {

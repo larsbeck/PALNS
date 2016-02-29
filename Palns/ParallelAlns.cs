@@ -84,6 +84,9 @@ namespace Palns
             }
         }
 
+        /// <summary>
+        /// The number of physical processors
+        /// </summary>
         public int ProcessorCores
         {
             get
@@ -92,6 +95,9 @@ namespace Palns
             }
         }
 
+        /// <summary>
+        /// Holds the current best solution
+        /// </summary>
         public TSolution BestSolution { get; private set; }
 
         /// <summary>
@@ -115,6 +121,11 @@ namespace Palns
             }
         }
 
+        /// <summary>
+        /// Solves the given input and produces a solution
+        /// </summary>
+        /// <param name="input">The problem to solve</param>
+        /// <returns>A solution to the input</returns>
         public TSolution Solve(TInput input)
         {
             _x = _constructionHeuristic(input);
@@ -337,20 +348,5 @@ namespace Palns
             var accepted = _randomizer.NextDouble() <= probability;
             return accepted ? WeightSelection.Accepted : WeightSelection.Rejected;
         }
-    }
-
-    public interface ISolve<in TInput, out TOutput> where TOutput : ISolution<TOutput>
-    {
-        TOutput Solve(TInput input);
-    }
-
-    public interface ISolution<out T> : IPalnsClonable<T>
-    {
-        double Objective { get; }
-    }
-
-    public interface IPalnsClonable<out T>
-    {
-        T Clone();
     }
 }
