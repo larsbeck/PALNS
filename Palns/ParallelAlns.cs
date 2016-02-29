@@ -174,7 +174,7 @@ namespace Palns
             var copyCurrentSolution = new TransformBlock<Message<TSolution>, Message<TSolution>>(
                 x =>
                 {
-                    x.Solution = _x.Copy();
+                    x.Solution = _x.Clone();
                     return x;
                 }, cloneOptions);
             var destroyAndRepair =

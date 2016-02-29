@@ -46,14 +46,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ArrayExtensions.cs" />
-    <Compile Include="ArrayTraverse.cs" />
     <Compile Include="ExtensionMethods.cs" />
     <Compile Include="IPalnsClonable.cs" />
     <Compile Include="ISolution.cs" />
     <Compile Include="ISolve.cs" />
     <Compile Include="Message.cs" />
-    <Compile Include="ObjectExtensions.cs" />
     <Compile Include="ParallelAlns.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReferenceEqualityComparer.cs" />
