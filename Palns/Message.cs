@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace Palns
 {
-    public class Message<TSolution>
+    internal class Message<TSolution>
     {
         public int OperatorIndex { get; set; }
         public Func<TSolution, Task<TSolution>> DestroyOperator { get; set; }

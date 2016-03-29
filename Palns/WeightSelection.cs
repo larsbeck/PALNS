@@ -10,7 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Palns
 {
-    public enum WeightSelection
+    internal enum WeightSelection
     {
         Rejected = 0,
         Accepted = 1,
