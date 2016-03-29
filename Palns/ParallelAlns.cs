@@ -24,7 +24,7 @@ namespace Palns
     /// <typeparam name="TInput">The input type</typeparam>
     public class ParallelAlns<TInput, TSolution> : ISolve<TInput, TSolution> where TSolution : ISolution<TSolution>
     {
-        private readonly Func<bool> _abort;
+        private readonly Func<TSolution, bool> _abort;
         private readonly double _alpha; //>0 and < 1
         private readonly object _bestLock = new object();
         private readonly object _cloneLock = new object();
@@ -34,10 +34,11 @@ namespace Palns
         private readonly List<double> _weights;
 
         private readonly double _newGlobalBestWeight,
-            _betterSolutionWeight,
-            _acceptedSolution,
-            _rejectedSolution,
-            _decay;
+                                _betterSolutionWeight,
+                                _acceptedSolution,
+                                _rejectedSolution,
+                                _decay,
+                                _precision;
 
         private readonly int? _numberOfThreads;
 
@@ -59,8 +60,10 @@ namespace Palns
             List<Func<TSolution, Task<TSolution>>> destroyOperators,
             List<Func<TSolution, Task<TSolution>>> repairOperators, double temperature, double alpha, Random randomizer,
             double newGlobalBestWeight, double betterSolutionWeight, double acceptedSolution, double rejectedSolution,
-            double decay, double initialWeight = 1, int? numberOfThreads = null,
-            Func<bool> abort = null, Action<TSolution> progressUpdate = null)
+            double decay, double initialWeight = 1, 
+            double precision = 1e-5,
+            int? numberOfThreads = null,
+            Func<TSolution, bool> abort = null, Action<TSolution> progressUpdate = null)
         {
             _destroyOperators = destroyOperators;
             _repairOperators = repairOperators;
@@ -72,6 +75,7 @@ namespace Palns
             _acceptedSolution = acceptedSolution;
             _rejectedSolution = rejectedSolution;
             _decay = decay;
+            _precision = precision;
             _abort = abort;
             _numberOfThreads = numberOfThreads;
             _progressUpdate = progressUpdate;
@@ -95,24 +99,86 @@ namespace Palns
         public TSolution BestSolution { get; private set; }
 
         /// <summary>
-        /// Gets a text describing the repair and destroy methods' weights.
+        /// Gets a text describing the methods' weights.
         /// </summary>
         public string MethodWeightLog
         {
             get
             {
-                var log = string.Format("Operators' weights\n{0,-10}|Operator\n\n", "Weight");
-                foreach (var combinationIdx in Enumerable.Range(0, _weights.Count).OrderBy(i => _weights[i]))
+                return WeightLog(
+                    "Operators' weights",
+                    _weights.ToArray(),
+                    idx => string.Format("{0}, {1}",
+                        _destroyOperators[idx / _repairOperators.Count].Method.Name,
+                        _repairOperators[idx % _repairOperators.Count].Method.Name));
+            }
+        }
+
+        /// <summary>
+        /// Gets a text describing the repair operations' weight: 
+        /// The weight of one repair operation is the average of the weights of all operations where the repair is used.
+        /// </summary>
+        public string RepairWeightLog
+        {
+            get
+            {
+                /* Create an array of doubles describing the weight of each repair operation */
+                var repairWeights = new double[_repairOperators.Count];
+                List<int> destroyOperatorChangeIdx =
+                    Enumerable.Range(0, _destroyOperators.Count).Select(i => i * _repairOperators.Count).ToList();
+                for (int repairIdx = 0; repairIdx < repairWeights.Length; repairIdx++)
                 {
-                    log += string.Format(
-                        "{0,-10:0.#####} {1}, {2}\n",
-                        _weights[combinationIdx],
-                        _destroyOperators[combinationIdx / _repairOperators.Count].Method.Name,
-                        _repairOperators[combinationIdx % _repairOperators.Count].Method.Name);
+                    repairWeights[repairIdx] = destroyOperatorChangeIdx.Average(destroyIdx => _weights[destroyIdx + repairIdx]);
                 }
 
-                return log;
+                /* Create and return description */
+                return WeightLog("Total repair weights", repairWeights, idx => _repairOperators[idx].Method.Name);
             }
+        }
+
+        /// <summary>
+        /// Gets a text describing the destroy operations' weight: 
+        /// The weight of one destroy operation is the average of the weights of all operations where the destroy is used.
+        /// </summary>
+        public string DestroyWeightLog
+        {
+            get
+            {
+                /* Create an array of doubles describing the weight of each destroy operation */
+                var destroyWeights = new double[_destroyOperators.Count];
+                List<int> repairOperatorSummands = Enumerable.Range(0, _repairOperators.Count).ToList();
+                for (int destroyIdx = 0; destroyIdx < destroyWeights.Length; destroyIdx++)
+                {
+                    destroyWeights[destroyIdx] =
+                        repairOperatorSummands.Average(repairIdx => _weights[destroyIdx * _repairOperators.Count + repairIdx]);
+                }
+
+                /* Create and return description */
+                return WeightLog("Total destroy weights", destroyWeights, idx => _destroyOperators[idx].Method.Name);
+            }
+        }
+
+        /// <summary>
+        /// Returns a nicely formatted overview over weights for operations, including both total and relative weights.
+        /// </summary>
+        /// <param name="title">The overview's title.</param>
+        /// <param name="weights">Weights to use.</param>
+        /// <param name="operationNameFromIdx">Given a (weight) index, returns the correct operation.</param>
+        /// <returns>A string describing the distribution of weight between operations.</returns>
+        private string WeightLog(string title, double[] weights, Func<int, string> operationNameFromIdx)
+        {
+            var log = string.Format("{0}\n{1,-10} {2,-15} Operation\n\n", title, "Weight", "Probability");
+            double sum = weights.Sum();
+            foreach (var idx in Enumerable.Range(0, weights.Length).OrderBy(i => weights[i]))
+            {
+                log += string.Format(
+                    "{0,-10:0.#####} {1, -15:#0.##%} {2}\n",
+                    weights[idx],
+                    weights[idx] / sum,
+                    operationNameFromIdx.Invoke(idx));
+            }
+
+            return log;
         }
 
         public TSolution Solve(TInput input)
@@ -196,7 +262,7 @@ namespace Palns
                 {
                     x.Temperature *= _alpha;
                     Interlocked.Increment(ref iterationCounter);
-                    if (!_abort.Invoke())
+                    if (!_abort.Invoke(BestSolution))
                     {
                         inputBlock.Post(x);
                     }
@@ -271,12 +337,12 @@ namespace Palns
                 {
                     _progressUpdate.Invoke(BestSolution);
                 }
-            } while (!_abort.Invoke());
+            } while (!_abort.Invoke(BestSolution));
         }
 
         private WeightSelection UpdateBestSolution(TSolution xTemp, WeightSelection weightSelection)
         {
-            if (xTemp.Objective < BestSolution.Objective)
+            if (BestSolution.Objective - xTemp.Objective > _precision)
             {
                 BestSolution = xTemp;
                 weightSelection = WeightSelection.NewGlobalBest;
@@ -331,7 +397,7 @@ namespace Palns
 
         private WeightSelection Accept(TSolution newSolution, double temperature)
         {
-            if (newSolution.Objective < _x.Objective)
+            if (_x.Objective - newSolution.Objective > _precision)
                 return WeightSelection.BetterThanCurrent;
             var probability = Math.Exp(-(newSolution.Objective - _x.Objective) / temperature);
             var accepted = _randomizer.NextDouble() <= probability;
