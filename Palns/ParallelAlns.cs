@@ -91,13 +91,7 @@ namespace Palns
         /// <summary>
         /// The number of physical processors
         /// </summary>
-        public int ProcessorCores
-        {
-            get
-            {
-                return Environment.ProcessorCount / 2;
-            }
-        }
+        public int ProcessorCores => Environment.ProcessorCount / 2;
 
         /// <summary>
         /// Holds the current best solution
@@ -114,9 +108,7 @@ namespace Palns
                 return WeightLog(
                     "Operators' weights",
                     _weights.ToArray(),
-                    idx => string.Format("{0}, {1}",
-                        _destroyOperators[idx / _repairOperators.Count].Method.Name,
-                        _repairOperators[idx % _repairOperators.Count].Method.Name));
+                    idx =>$"{_destroyOperators[idx/_repairOperators.Count].Method.Name}, {_repairOperators[idx%_repairOperators.Count].Method.Name}");
             }
         }
 
@@ -173,15 +165,11 @@ namespace Palns
         /// <returns>A string describing the distribution of weight between operations.</returns>
         private string WeightLog(string title, double[] weights, Func<int, string> operationNameFromIdx)
         {
-            var log = string.Format("{0}\n{1,-10} {2,-15} Operation\n\n", title, "Weight", "Probability");
+            var log = $"{title}\n{"Weight",-10} {"Probability",-15} Operation\n\n";
             double sum = weights.Sum();
             foreach (var idx in Enumerable.Range(0, weights.Length).OrderBy(i => weights[i]))
             {
-                log += string.Format(
-                    "{0,-10:0.#####} {1, -15:#0.##%} {2}\n",
-                    weights[idx],
-                    weights[idx] / sum,
-                    operationNameFromIdx.Invoke(idx));
+                log += $"{weights[idx],-10:0.#####} {weights[idx]/sum,-15:#0.##%} {operationNameFromIdx.Invoke(idx)}\n";
             }
 
             return log;
@@ -198,7 +186,7 @@ namespace Palns
             BestSolution = _x;
             Task.WaitAll(
                 Enumerable.Range(0, _numberOfThreads ?? ProcessorCores)
-                    .Select(i => Task.Run(() => ApplyOperation()))
+                    .Select(i => Task.Run(ApplyOperation))
                     .ToArray());
             return BestSolution;
         }
@@ -312,21 +300,13 @@ namespace Palns
                 lock (_weightLock)
                 {
                     operatorIndex = SelectOperatorIndex(_cumulativeWeights);
-                    d = _destroyOperators[operatorIndex / _repairOperators.Count];
-                    r = _repairOperators[operatorIndex % _repairOperators.Count];
+                    d = _destroyOperators[operatorIndex/_repairOperators.Count];
+                    r = _repairOperators[operatorIndex%_repairOperators.Count];
                 }
                 TSolution xTemp;
-                //if there is just one thread, there is no need for copying
-                if (_numberOfThreads != null && _numberOfThreads.Value == 1)
+                lock (_cloneLock)
                 {
-                    xTemp = _x;
-                }
-                else
-                {
-                    lock (_cloneLock)
-                    {
-                        xTemp = _x.Clone();
-                    }
+                    xTemp = _x.Clone();
                 }
                 xTemp = await r(await d(xTemp));
                 WeightSelection weightSelection;
@@ -344,10 +324,7 @@ namespace Palns
                 }
                 temperature *= _alpha;
 
-                if (_progressUpdate != null)
-                {
-                    _progressUpdate.Invoke(BestSolution);
-                }
+                _progressUpdate?.Invoke(BestSolution);
             } while (!_abort.Invoke(BestSolution));
         }
 
