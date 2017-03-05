@@ -185,7 +185,7 @@ namespace Palns
             BestSolution = _x;
             Task.WaitAll(
                 Enumerable.Range(0, _numberOfThreads ?? ProcessorCores)
-                    .Select(i => Task.Run(ApplyOperation))
+                    .Select(i => Task.Run(async () => await ApplyOperation()))
                     .ToArray());
             return BestSolution;
         }
@@ -213,7 +213,7 @@ namespace Palns
                 WeightSelection weightSelection;
                 using (await _cloneLock.LockAsync())
                 {
-                    weightSelection = UpdateCurrentSolution(xTemp, temperature);
+                    weightSelection = await UpdateCurrentSolution(xTemp, temperature);
                 }
                 using (await _bestLock.LockAsync())
                 {
@@ -239,9 +239,9 @@ namespace Palns
             return weightSelection;
         }
 
-        private WeightSelection UpdateCurrentSolution(TSolution xTemp, double temperature)
+        private async Task<WeightSelection> UpdateCurrentSolution(TSolution xTemp, double temperature)
         {
-            var weightSelection = Accept(xTemp, temperature);
+            var weightSelection = await Accept(xTemp, temperature);
             if (weightSelection >= WeightSelection.Accepted)
             {
                 _x = xTemp;
@@ -289,13 +289,13 @@ namespace Palns
             return cumulativeWeights.Count - 1;
         }
 
-        private WeightSelection Accept(TSolution newSolution, double temperature)
+        private async Task<WeightSelection> Accept(TSolution newSolution, double temperature)
         {
             if (_x.Objective - newSolution.Objective > _precision)
                 return WeightSelection.BetterThanCurrent;
             var probability = Math.Exp(-(newSolution.Objective - _x.Objective) / temperature);
             bool accepted;
-            using (_randomizerLock.LockAsync())
+            using (await _randomizerLock.LockAsync())
             {
                 accepted = _randomizer.NextDouble() <= probability;
             }
